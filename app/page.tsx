@@ -10,7 +10,7 @@ const supabase = createClient(
 
 export default function Page() {
   const [user, setUser] = useState(null);
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState<{ title: string; description: string; price: string; user_email?: string; images: string[] }[]>([]);
   const [myItems, setMyItems] = useState([]);
   const [formData, setFormData] = useState({
     title: "",
@@ -74,26 +74,24 @@ export default function Page() {
     e.preventDefault();
     const { title, description, price } = formData;
 
-    if (!title || !description || !price) return alert("Vyplňte všechna pole!");
+    if (!title || !description || !price) return alert('Vyplňte všechna pole!');
 
     let imageUrls: string[] = [];
     if (images) {
       for (let i = 0; i < images.length; i++) {
         const file = images[i];
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("uploads") // Bucket 'uploads'
+          .from('uploads')
           .upload(`items/${Date.now()}-${file.name}`, file);
 
         if (uploadError) {
           console.error(uploadError);
-          alert("Chyba při nahrávání obrázku.");
+          alert('Chyba při nahrávání obrázku.');
           return;
         }
 
-        if (uploadData) {
-          const { data: publicUrlData } = supabase.storage
-            .from("uploads")
-            .getPublicUrl(uploadData.path);
+        if (uploadData && uploadData.path) {
+          const { data: publicUrlData } = supabase.storage.from('uploads').getPublicUrl(uploadData.path);
           if (publicUrlData) {
             imageUrls.push(publicUrlData.publicUrl);
           }
@@ -101,22 +99,36 @@ export default function Page() {
       }
     }
 
-    const { data, error } = await supabase
-      .from("items")
-      .insert([
-        { title, description, price, images: imageUrls, user_id: user?.id },
-      ])
-      .select();
+    // Přidání inzerátu s user_id
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Uložíme inzerát do databáze (s doplněným user.id a user.email)
+    const { data, error } = await supabase.from('items').insert([
+      { 
+        title, 
+        description, 
+        price, 
+        images: imageUrls, 
+        user_id: user?.id, 
+        user_email: user?.email 
+      }
+    ]).select(); // NEZAPOMENOUT NA SELECT!
 
     if (error) {
       console.error(error);
-      alert("Chyba při přidávání inzerátu.");
+      alert('Chyba při přidávání inzerátu.');
     } else {
+      // Správné použití TVÝCH stavových proměnných
       setItems((prev) => [...prev, ...data]);
-      setFormData({ title: "", description: "", price: "" });
+      setFormData({ title: '', description: '', price: '' });
       setImages(null);
-      setView("home");
+      setView('home');
     }
+  };
+
+  // Handle buy item
+  const handleBuy = (sellerEmail: string | null) => {
+    alert(`Kontaktujte prodejce na e-mailu: ${sellerEmail}`);
   };
 
   // Handle delete item
@@ -151,10 +163,22 @@ export default function Page() {
               <li key={item.id} className="p-4 border border-gray-300 rounded">
                 <h3 className="text-xl font-bold">{item.title}</h3>
                 <p className="text-green-600 font-semibold">{item.price} Kč</p>
-                <div
-                  className="mt-2 text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: item.description }}
-                />
+                <p className="mt-2 text-gray-700">{item.description}</p>
+                {item.image && (
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="w-full h-40 object-cover mt-4"
+                  />
+                )}
+                {user && user.email !== item.user_email && (
+                  <button
+                    onClick={() => handleBuy(item.user_email)}
+                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-4"
+                  >
+                    Koupit
+                  </button>
+                )}
               </li>
             ))}
           </ul>

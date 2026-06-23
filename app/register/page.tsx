@@ -26,21 +26,10 @@ export default function RegisterPage() {
     });
 
     if (signUpError) {
-      setError('Chyba při registraci. Zkontrolujte své údaje.');
-      return;
-    }
-
-    // Uložení uživatelského jména do profilu (volitelně)
-    if (user?.user) {
-      const { error: profileError } = await supabase
-        .from('profiles') // Předpokládáme tabulku 'profiles'
-        .insert([{ id: user.user.id, username }]);
-
-      if (profileError) {
-        setError('Chyba při ukládání uživatelského jména.');
+        // Vypíšeme na obrazovku přesný chybový text, který posílá Supabase
+        setError(`${signUpError.message}`);
         return;
       }
-    }
 
     // Přesměrování na přihlašovací stránku
     router.push('/login');
@@ -63,13 +52,6 @@ export default function RegisterPage() {
           placeholder="Heslo"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded"
-        />
-        <input
-          type="text"
-          placeholder="Uživatelské jméno"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded"
         />
         <button
