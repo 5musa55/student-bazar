@@ -10,8 +10,18 @@ const supabase = createClient(
 
 export default function Page() {
   const [user, setUser] = useState(null);
-  const [items, setItems] = useState<{ title: string; description: string; price: string; user_email?: string; images: string[] }[]>([]);
+  const [items, setItems] = useState<
+      {
+        id: number; // Add id property
+        title: string;
+        description: string;
+        price: string;
+        user_email?: string;
+        images: string[];
+      }[]
+    >([]);
   const [myItems, setMyItems] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(""); // Přidání stavu pro vyhledávání
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -19,7 +29,10 @@ export default function Page() {
   });
   const [images, setImages] = useState<FileList | null>(null);
   const [view, setView] = useState("home"); // 'home', 'add', 'myItems'
-
+  // Fetch all items
+  const filteredItems = items.filter(item =>
+    item.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
   // Fetch all items
   useEffect(() => {
     const fetchItems = async () => {
@@ -74,24 +87,28 @@ export default function Page() {
     e.preventDefault();
     const { title, description, price } = formData;
 
-    if (!title || !description || !price) return alert('Vyplňte všechna pole!');
+    if (!title || !description || !price) return alert("Vyplňte všechna pole!");
 
     let imageUrls: string[] = [];
     if (images) {
       for (let i = 0; i < images.length; i++) {
         const file = images[i];
+        const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "");
+
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('uploads')
-          .upload(`items/${Date.now()}-${file.name}`, file);
+          .from("uploads")
+          .upload(`items/${Date.now()}-${safeFileName}`, file);
 
         if (uploadError) {
           console.error(uploadError);
-          alert('Chyba při nahrávání obrázku.');
+          alert("Chyba při nahrávání obrázku.");
           return;
         }
 
         if (uploadData && uploadData.path) {
-          const { data: publicUrlData } = supabase.storage.from('uploads').getPublicUrl(uploadData.path);
+          const { data: publicUrlData } = supabase.storage
+            .from("uploads")
+            .getPublicUrl(uploadData.path);
           if (publicUrlData) {
             imageUrls.push(publicUrlData.publicUrl);
           }
@@ -100,29 +117,23 @@ export default function Page() {
     }
 
     // Přidání inzerátu s user_id
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // Uložíme inzerát do databáze (s doplněným user.id a user.email)
-    const { data, error } = await supabase.from('items').insert([
-      { 
-        title, 
-        description, 
-        price, 
-        images: imageUrls, 
-        user_id: user?.id, 
-        user_email: user?.email 
-      }
-    ]).select(); // NEZAPOMENOUT NA SELECT!
+    const { data, error } = await supabase
+      .from('items')
+      .insert([{ title, description, price, images: imageUrls, user_id: user?.id }])
+      .select();
 
     if (error) {
       console.error(error);
-      alert('Chyba při přidávání inzerátu.');
+      alert("Chyba při přidávání inzerátu.");
     } else {
-      // Správné použití TVÝCH stavových proměnných
-      setItems((prev) => [...prev, ...data]);
-      setFormData({ title: '', description: '', price: '' });
+      if (data && Array.isArray(data)) {
+        setItems((prev) => [...prev, ...data]); // Přidání nových dat do seznamu
+      } else {
+        console.warn("Žádná data nebyla vrácena z Supabase.");
+      }
+      setFormData({ title: "", description: "", price: "" });
       setImages(null);
-      setView('home');
+      setView("home");
     }
   };
 
@@ -131,7 +142,37 @@ export default function Page() {
     alert(`Kontaktujte prodejce na e-mailu: ${sellerEmail}`);
   };
 
-  // Handle delete item
+  const handleEdit = async (id: number, updatedData: { id: number; title: string; description: string; price: string }) => {
+      const { data, error } = await supabase
+        .from("items")
+        .update(updatedData)
+        .eq("id", id)
+        .select();
+  
+      if (error) {
+        console.error(error);
+        alert("Chyba při úpravě inzerátu.");
+      } else {
+        if (data && Array.isArray(data)) {
+          setItems((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, ...updatedData } : item))
+          );
+        }
+        alert("Inzerát byl úspěšně upraven.");
+      }
+    };
+
+    // Add this function to handle the edit button click
+    const handleEditClick = (item: any) => {
+      const updatedData = {
+        id: item.id,
+        title: prompt("Nový název:", item.title) || item.title,
+        description: prompt("Nový popis:", item.description) || item.description,
+        price: prompt("Nová cena:", item.price) || item.price,
+      };
+      handleEdit(item.id, updatedData);
+    };
+
   const handleDelete = async (id: number) => {
     const { error } = await supabase.from("items").delete().eq("id", id);
     if (error) {
@@ -146,31 +187,64 @@ export default function Page() {
       {/* Menu */}
       <nav className="flex justify-between items-center mb-6">
         <div className="space-x-4">
-          <button onClick={() => setView('home')} className="text-blue-500">Domů</button>
-          {user && <button onClick={() => setView('add')} className="text-blue-500">Přidat inzerát</button>}
-          {!user && <a href="/login" className="text-blue-500">Přihlásit se</a>}
-          {user && <button onClick={() => setView('myItems')} className="text-blue-500">Moje inzeráty</button>}
+          <button onClick={() => setView("home")} className="text-blue-500">
+            Domů
+          </button>
+          {user && (
+            <button onClick={() => setView("add")} className="text-blue-500">
+              Přidat inzerát
+            </button>
+          )}
+          {!user && (
+            <a href="/login" className="text-blue-500">
+              Přihlásit se
+            </a>
+          )}
+          {user && (
+            <button
+              onClick={() => setView("myItems")}
+              className="text-blue-500"
+            >
+              Moje inzeráty
+            </button>
+          )}
         </div>
-        {user && <button onClick={handleLogout} className="text-red-500">Odhlásit se</button>}
+        {user && (
+          <button onClick={handleLogout} className="text-red-500">
+            Odhlásit se
+          </button>
+        )}
       </nav>
-
       {/* Content */}
       {view === "home" && (
         <div>
           <h1 className="text-3xl font-bold mb-6">Všechny inzeráty</h1>
+          <div className="mb-6">
+            <input
+              type="text"
+              placeholder="Hledat inzeráty..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded"
+            />
+          </div>
           <ul className="space-y-4">
-            {items.map((item: any) => (
+            {filteredItems.map((item: any) => (
               <li key={item.id} className="p-4 border border-gray-300 rounded">
                 <h3 className="text-xl font-bold">{item.title}</h3>
                 <p className="text-green-600 font-semibold">{item.price} Kč</p>
                 <p className="mt-2 text-gray-700">{item.description}</p>
-                {item.image && (
-                  <img
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-40 object-cover mt-4"
-                  />
-                )}
+                <div className="flex space-x-2 mt-2 overflow-x-auto">
+                  {Array.isArray(item.images) &&
+                    item.images.map((url: string, index: number) => (
+                      <img
+                        key={index}
+                        src={url}
+                        alt={`Obrázek inzerátu ${index + 1}`}
+                        className="w-24 h-24 object-cover rounded"
+                      />
+                    ))}
+                </div>
                 {user && user.email !== item.user_email && (
                   <button
                     onClick={() => handleBuy(item.user_email)}
@@ -233,6 +307,15 @@ export default function Page() {
       {view === "myItems" && (
         <div>
           <h1 className="text-3xl font-bold mb-6">Moje inzeráty</h1>
+          <div className="mb-6">
+            <input
+              type="text"
+              placeholder="Hledat inzeráty..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded"
+            />
+          </div>
           <ul className="space-y-4">
             {myItems.map((item: any) => (
               <li key={item.id} className="p-4 border border-gray-300 rounded">
