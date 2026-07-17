@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 export default function Page() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<{ email: string } | null>(null);
   const [items, setItems] = useState<
       {
         id: number; // Add id property
@@ -20,13 +20,16 @@ export default function Page() {
         images: string[];
       }[]
     >([]);
+
   const [myItems, setMyItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState(""); // Přidání stavu pro vyhledávání
+  const [editingItemId, setEditingItemId] = useState<number | null>(null); // ID upravovaného inzerátu
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     price: "",
   });
+
   const [images, setImages] = useState<FileList | null>(null);
   const [view, setView] = useState("home"); // 'home', 'add', 'myItems'
   // Fetch all items
@@ -118,9 +121,16 @@ export default function Page() {
 
     // Přidání inzerátu s user_id
     const { data, error } = await supabase
-      .from('items')
-      .insert([{ title, description, price, images: imageUrls, user_id: user?.id }])
-      .select();
+  .from('items')
+  .insert([{ 
+    title, 
+    description, 
+    price, 
+    images: imageUrls, 
+    user_id: user?.id,
+    user_email: user?.email // Přidáno odeslání e-mailu
+  }])
+  .select();
 
     if (error) {
       console.error(error);
@@ -142,36 +152,44 @@ export default function Page() {
     alert(`Kontaktujte prodejce na e-mailu: ${sellerEmail}`);
   };
 
-  const handleEdit = async (id: number, updatedData: { id: number; title: string; description: string; price: string }) => {
-      const { data, error } = await supabase
-        .from("items")
-        .update(updatedData)
-        .eq("id", id)
-        .select();
-  
-      if (error) {
-        console.error(error);
-        alert("Chyba při úpravě inzerátu.");
-      } else {
-        if (data && Array.isArray(data)) {
-          setItems((prev) =>
-            prev.map((item) => (item.id === id ? { ...item, ...updatedData } : item))
-          );
-        }
-        alert("Inzerát byl úspěšně upraven.");
-      }
-    };
 
-    // Add this function to handle the edit button click
-    const handleEditClick = (item: any) => {
-      const updatedData = {
-        id: item.id,
-        title: prompt("Nový název:", item.title) || item.title,
-        description: prompt("Nový popis:", item.description) || item.description,
-        price: prompt("Nová cena:", item.price) || item.price,
-      };
-      handleEdit(item.id, updatedData);
-    };
+  const handleEdit = (item: any) => {
+    setFormData({
+      title: item.title,
+      description: item.description,
+      price: item.price,
+    });
+    setEditingItemId(item.id); // Nastavíme ID upravovaného inzerátu
+    setView("edit"); // Přepneme pohled na formulář pro úpravu
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.title || !formData.description || !formData.price) {
+      return alert("Vyplňte všechna pole!");
+    }
+
+    // Odeslání aktualizovaných dat na Supabase
+    const { error } = await supabase
+      .from("items")
+      .update({
+        title: formData.title,
+        description: formData.description,
+        price: formData.price,
+      })
+      .eq("id", editingItemId); // Aktualizujeme inzerát podle jeho ID
+
+    if (error) {
+      console.error(error);
+      alert("Chyba při aktualizaci inzerátu.");
+    } else {
+      alert("Inzerát byl úspěšně aktualizován.");
+      setView("myItems"); // Přepneme zpět na seznam inzerátů
+      setFormData({ title: "", description: "", price: "" }); // Reset formuláře
+      setEditingItemId(null); // Reset ID upravovaného inzerátu
+    }
+  };
 
   const handleDelete = async (id: number) => {
     const { error } = await supabase.from("items").delete().eq("id", id);
@@ -181,6 +199,7 @@ export default function Page() {
       setMyItems((prev) => prev.filter((item) => item.id !== id));
     }
   };
+
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -246,63 +265,101 @@ export default function Page() {
                     ))}
                 </div>
                 {user && user.email !== item.user_email && (
-                  <button
-                    onClick={() => handleBuy(item.user_email)}
-                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-4"
-                  >
-                    Koupit
-                  </button>
+                  <div>
+                    <button
+                      onClick={() => handleBuy(item.user_email)}
+                      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-4"
+                    >
+                      Kontaktovat prodejce
+                    </button>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         </div>
       )}
-
       {view === "add" && (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <h1 className="text-3xl font-bold mb-6">Přidat nový inzerát</h1>
-          <input
-            type="text"
-            placeholder="Název"
-            value={formData.title}
-            onChange={(e) =>
-              setFormData({ ...formData, title: e.target.value })
-            }
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-          <textarea
-            placeholder="Popis"
-            value={formData.description}
-            onChange={(e) =>
-              setFormData({ ...formData, description: e.target.value })
-            }
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-          <input
-            type="number"
-            placeholder="Cena"
-            value={formData.price}
-            onChange={(e) =>
-              setFormData({ ...formData, price: e.target.value })
-            }
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={(e) => setImages(e.target.files)}
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-          <button
-            type="submit"
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-          >
-            Přidat
-          </button>
-        </form>
-      )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <h1 className="text-3xl font-bold mb-6">Přidat nový inzerát</h1>
+                <input
+                  type="text"
+                  placeholder="Název"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <textarea
+                  placeholder="Popis"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <input
+                  type="number"
+                  placeholder="Cena"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => setImages(e.target.files)}
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <button
+                  type="submit"
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                >
+                  Přidat
+                </button>
+              </form>
+            )}
+            {view === "edit" && (
+              <form onSubmit={handleUpdate} className="space-y-4">
+                <h1 className="text-3xl font-bold mb-6">Upravit inzerát</h1>
+                <input
+                  type="text"
+                  placeholder="Název"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <textarea
+                  placeholder="Popis"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <input
+                  type="number"
+                  placeholder="Cena"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: e.target.value })
+                  }
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+                <button
+                  type="submit"
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                >
+                  Aktualizovat
+                </button>
+              </form>
+            )}
 
       {view === "myItems" && (
         <div>
@@ -317,32 +374,24 @@ export default function Page() {
             />
           </div>
           <ul className="space-y-4">
-            {myItems.map((item: any) => (
-              <li key={item.id} className="p-4 border border-gray-300 rounded">
+            {myItems.map((item) => (
+              <div key={item.id} className="border p-4 rounded mb-4">
                 <h3 className="text-xl font-bold">{item.title}</h3>
-                <p className="text-green-600 font-semibold">{item.price} Kč</p>
-                <div
-                  className="mt-2 text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: item.description }}
-                />
-                <div className="flex space-x-2 mt-2 overflow-x-auto">
-                  {Array.isArray(item.images) &&
-                    item.images.map((url: string, index: number) => (
-                      <img
-                        key={index}
-                        src={url}
-                        alt={`Obrázek inzerátu ${index + 1}`}
-                        className="w-24 h-24 object-cover rounded"
-                      />
-                    ))}
-                </div>
+                <p>{item.description}</p>
+                <p className="text-gray-600">{item.price} Kč</p>
+                <button
+                  onClick={() => handleEdit(item)}
+                  className="text-blue-500 mt-2"
+                >
+                  Upravit
+                </button>
                 <button
                   onClick={() => handleDelete(item.id)}
-                  className="text-red-500 mt-2"
+                  className="text-red-500 mt-2 ml-4"
                 >
                   Smazat
                 </button>
-              </li>
+              </div>
             ))}
           </ul>
         </div>

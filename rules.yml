@@ -1,0 +1,32 @@
+rules:
+  - id: ai-react-xss-dangerously-set-html
+    pattern-regex: dangerouslySetInnerHTML
+    message: "OWASP A03: Injection"
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+
+  - id: ai-supabase-frontend-identity-leak
+    pattern-regex: user_email:\s*(user\?.email|item.user_email)
+    message: "OWASP A04: Insecure Design"
+    languages:
+      - javascript
+      - typescript
+    severity: WARNING
+
+  - id: ai-supabase-hardcoded-secret
+    pattern-regex: "anon_key|service_key|supabase_secret"
+    message: "OWASP A02: Cryptographic Failures"
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+
+  - id: ai-supabase-service-role-exposed
+    pattern-regex: NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
+    message: "OWASP A05: Security Misconfiguration"
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
